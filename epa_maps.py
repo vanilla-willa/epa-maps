@@ -123,7 +123,7 @@ class GooglePlaces(object):
                 
                 # data is a list of dictionaries
                 data = self.process_data(keyword + ' in East Palo Alto', category_type)
-                dataframes[category_type] = pd.DataFrame(data)
+                dataframes[category_type] = pd.DataFrame(data).reindex(columns=self.fields)
                 
                 print("====== updated dataframe ===========")
                 # print(dataframes)
