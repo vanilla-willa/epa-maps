@@ -17,6 +17,7 @@ class GooglePlaces(object):
         self.coords = coords
         self.radius = radius
         self.fields = fields
+        self.columns = ['name', 'types', 'coordinates','address', 'phone', 'website']
  
     # testing function - only returns one result from API
     def get_place(self, input_text):
@@ -41,7 +42,7 @@ class GooglePlaces(object):
             'radius': self.radius,
             'keyword': keyword, 
         }
-        if 'category' in kwargs:
+        if kwargs['category'] is not None:
             print("Extra parameter category found")
             params['type'] = kwargs['category']
 
@@ -89,7 +90,7 @@ class GooglePlaces(object):
             place_data['name'] = name
 
             types = details['result'].get('types', '')
-            place_data['types'] = types
+            place_data['types'] = "\n".join(types)
 
             long_lat = details['result'].get('geometry', '')
             if isinstance(long_lat, dict):
@@ -114,7 +115,7 @@ class GooglePlaces(object):
     def loop_keywords(self, **kwargs):
         dataframes = {}
         if 'category_types' in kwargs:
-            for category_type in category_types:
+            for category_type in kwargs['category_types']:
                 print("Retrieving results for keyword: ", category_type)
                 if '_' in category_type:
                     keyword = category_type.replace('_', '')
@@ -123,21 +124,22 @@ class GooglePlaces(object):
                 
                 # data is a list of dictionaries
                 data = self.process_data(keyword + ' in East Palo Alto', category_type)
-                dataframes[category_type] = pd.DataFrame(data).reindex(columns=self.fields)
+                dataframes[category_type] = pd.DataFrame(data).reindex(columns=self.columns)
                 
                 print("====== updated dataframe ===========")
                 # print(dataframes)
 
         if 'keywords' in kwargs:
-            for keyword in keywords:
-                print("Retrieving results for keyword: ", category_type)
+            for keyword in kwargs['keywords']:
+                print("Retrieving results for keyword: ", keyword)
                 
                 # data is a list of dictionaries
                 data = self.process_data(keyword + ' in East Palo Alto')
-                dataframes[category_type] = pd.DataFrame(data)
+                dataframes[keyword] = pd.DataFrame(data).reindex(columns=self.columns)
                 
                 print("====== updated dataframe ===========")
                 # print(dataframes)
+
         return dataframes
 
     def output_to_excel(self, dataframes):
@@ -162,25 +164,43 @@ class GooglePlaces(object):
         print("saving excel sheet")
         wb.save(dest_filename)
 
+class Data(object):
+    def __init__(self):
+        super(Data, self).__init__()
+        self.data = pd.read_excel('outreach.xlsx', sheet_name=None)
+
+    def merge_data(self):
+        df = pd.concat(self.data, ignore_index=True)
+        consolidated = df.drop_duplicates(subset=["name"], keep='first')
+        print(consolidated)
+
+        print("ouputting to excel sheet")
+        dest_filename = 'outreach.xlsx'
+        engine = 'openpyxl'
+        wb = openpyxl.load_workbook(dest_filename)
+        writer = pd.ExcelWriter(dest_filename, engine=engine, mode='a')
+
+        writer.book = wb
+        writer.sheets = dict( (ws.title, ws) for ws in wb.worksheets)
+        consolidated.to_excel(writer, sheet_name='merged', index=False, header=True)
+        wb.save(dest_filename)
+
+
 if __name__ == '__main__':
-    # wb = Workbook()
-    # ws = wb.active
-    # ws.title = "test"
-    # column_titles = ["Name", "Type", "Address", "Coordinates", "Phone", "Website"]
-    # ws.append(column_titles)
 
     coords = '37.475800, -122.131355'
     radius = '3000'
     fields = ['name', 'type', 'geometry/location','formatted_address', 'formatted_phone_number', 'website']
     api = GooglePlaces(config.api_key, coords, radius, fields)
 
-    category_types = [ 'hospital' ]
-    # category_types = ['church', 'convenience_store', 'daycare', 'doctor', 'hospital', 'liquor_store', 'school', 'supermarket']
-    # keywords = ['clinic', 'daycare', 'youth organization', 'non-profit organization', 'social services organization', 'grocery store']
-    keywords = ['clinic']
+    category_types = ['church', 'convenience_store', 'daycare', 'doctor', 'hospital', 'school', 'supermarket']
+    keywords = ['clinic', 'daycare', 'youth organization', 'non-profit organization', 'social services organization', 'grocery store']
 
     # to do manually: police station, park, library, city hall, government office, gas station, bus station, cafe, book store
 
     # make each keyword search into a dataframe
     dataframes = api.loop_keywords(keywords=keywords, category_types=category_types)
     api.output_to_excel(dataframes)
+
+    df = Data()
+    consolidated = df.merge_data()
